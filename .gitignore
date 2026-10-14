@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secrets - never commit these
+.env
+.streamlit/secrets.toml
+
+# Notebooks / OS / editors
+.ipynb_checkpoints/
+.DS_Store
+Thumbs.db
