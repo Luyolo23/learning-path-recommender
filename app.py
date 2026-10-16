@@ -11,10 +11,7 @@ internally and is NEVER sent to the browser or shown in any widget.
 """
 from __future__ import annotations
 
-import os
-
 import streamlit as st
-from dotenv import load_dotenv
 
 from src.clustering import train_cluster_model
 from src.config import DEMO_PROFILES, TOPIC_LABELS, TOPICS
@@ -26,10 +23,6 @@ from src.recommender import load_resources
 from src.ui import (APP_CSS, LEVELS, TOPIC_ICONS, hero_html, kpi_html, resource_card_html,
                     skill_bars_html, stepper_html)
 from src.visuals import cluster_scatter, radar_chart
-
-load_dotenv()  # reads GROQ_API_KEY / GROQ_MODEL from a local .env file if present
-
-MAX_AI_PLANS_PER_SESSION = 3  # protects the app owner's free-tier quota on a public demo
 
 st.set_page_config(page_title="Learning Path Recommender", page_icon="🧭", layout="wide")
 st.markdown(APP_CSS, unsafe_allow_html=True)
@@ -55,51 +48,15 @@ def get_questions():
 
 
 # --------------------------------------------------------------------------- #
-# API key handling (server-side only)
-# --------------------------------------------------------------------------- #
-def server_api_key() -> str:
-    """The app owner's key. Used internally, never displayed or prefilled anywhere."""
-    key = os.getenv("GROQ_API_KEY", "")
-    if not key:
-        try:
-            key = st.secrets.get("GROQ_API_KEY", "")  # Streamlit Cloud secrets
-        except Exception:
-            key = ""
-    return key
-
-
-# --------------------------------------------------------------------------- #
 # Sidebar
 # --------------------------------------------------------------------------- #
 def render_sidebar() -> dict:
-    has_server_key = bool(server_api_key())
     with st.sidebar:
         st.header("⚙️ Your settings")
         hours = st.slider("Study hours per week", min_value=2, max_value=20, value=6)
         goal = st.text_input("Your goal (optional)", placeholder="e.g. build a chatbot with Python")
 
-        st.divider()
-        st.subheader("✨ AI-written plan wording")
-        use_llm = st.toggle("Let an AI (Groq) write my plan", value=False)
-        user_key = ""
-        if use_llm:
-            if has_server_key:
-                left = MAX_AI_PLANS_PER_SESSION - st.session_state.get("ai_calls", 0)
-                st.caption(f"AI wording is available ({max(left, 0)} left this session).")
-            else:
-                # Empty by default: visitors can supply their OWN key. It is never prefilled.
-                user_key = st.text_input("Your Groq API key", value="", type="password",
-                                         help="Free keys at console.groq.com. Used only for this session.")
-            st.caption("Only your topic scores and goal text are sent. No names or personal details.")
-        else:
-            st.caption("Off by default. The built-in plan works fully offline.")
-
-        st.divider()
-        st.caption("🔒 Nothing you enter is stored. Quiz answers live only in this browser session.")
-
-    api_key = user_key or (server_api_key() if use_llm else "")
-    return {"hours": hours, "goal": goal, "use_llm": use_llm, "api_key": api_key,
-            "model": os.getenv("GROQ_MODEL", "")}
+    return {"hours": hours, "goal": goal}
 
 
 # --------------------------------------------------------------------------- #
@@ -145,22 +102,12 @@ def render_quiz(questions):
 # Results
 # --------------------------------------------------------------------------- #
 def compute_result(skills, settings, resources, cluster_model):
-    use_llm = settings["use_llm"]
-    cap_notice = None
-    if use_llm and st.session_state.get("ai_calls", 0) >= MAX_AI_PLANS_PER_SESSION:
-        use_llm = False
-        cap_notice = "You have used all AI-written plans for this session, so the built-in plan is shown."
     with st.spinner("Building your learning path..."):
         result = run_pipeline(
             skills, resources, cluster_model,
             hours_per_week=settings["hours"], goal=settings["goal"],
-            use_llm=use_llm, api_key=settings["api_key"] or None,
-            llm_model=settings["model"] or None,
+            use_llm=False, api_key=None, llm_model=None,
         )
-    if use_llm and settings["api_key"]:
-        st.session_state["ai_calls"] = st.session_state.get("ai_calls", 0) + 1
-    if cap_notice:
-        result.notice = cap_notice
     return result
 
 
@@ -209,9 +156,6 @@ def render_path(result):
 def render_plan(result):
     if result.notice:
         st.warning(result.notice)
-    elif result.plan["source"] == "ai-worded":
-        st.caption("✨ Wording written by an AI and checked automatically. The resources always come "
-                   "from the recommender.")
     st.write(result.plan["summary"])
 
     weeks = result.plan["weeks"]
@@ -242,12 +186,11 @@ def render_about():
         """
 **Pipeline:** quiz → skill vector → K-Means learner type → content-based recommender
 (cosine similarity between your gaps and each resource, difficulty fit, prerequisite ordering,
-time budget) → 4-week schedule → optional AI wording.
+time budget) → 4-week schedule.
 
 **Responsible AI notes**
 - **Transparent:** every recommendation shows why it was chosen.
 - **The recommender is not an LLM:** it ranks resources with plain maths you can inspect.
-  The optional LLM only writes friendly wording, and its output is validated (no invented resources or links).
 - **Synthetic data:** learner archetypes come from generated data, not real students.
 - **Limited catalogue:** it can only recommend what is in `data/resources.csv`, which reflects its author's choices.
 - **Labels describe a pattern, not your ability.** A short quiz is a rough snapshot.

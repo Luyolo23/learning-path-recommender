@@ -8,7 +8,7 @@ from matplotlib.figure import Figure
 from .clustering import ClusterModel, skills_to_vector
 from .config import TOPIC_LABELS, TOPICS
 
-ACCENT = "#4F46E5"
+ACCENT = "#6B7821"
 SHORT_LABELS = {
     "python": "Python", "data": "Data", "prompting": "Prompting",
     "ml": "ML basics", "evaluation": "Evaluation", "ethics": "Resp. AI",
